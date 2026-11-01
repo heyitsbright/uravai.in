@@ -5,7 +5,7 @@ const loginStatus = document.querySelector('#admin-login-status');
 const orderStatus = document.querySelector('#admin-order-status');
 const recentList = document.querySelector('#admin-recent-list');
 let adminSession = '';
-let rupeesPerPoint = 100;
+let rupeesPerPoint = 10;
 
 function updatePointsPreview() {
   const amount = Number(document.querySelector('#order-amount').value);
@@ -79,7 +79,7 @@ loginForm?.addEventListener('submit', async event => {
     });
     if (!result.token) throw new Error('Missing session');
     adminSession = result.token;
-    rupeesPerPoint = Number(result.rupeesPerPoint) || 100;
+    rupeesPerPoint = Number(result.rupeesPerPoint) || 10;
     document.querySelector('#points-rule-note').textContent = `Automatically calculated: 1 point per ₹${rupeesPerPoint} spent.`;
     document.querySelector('#admin-password').value = '';
     document.querySelector('#admin-login').hidden = true;
@@ -104,8 +104,8 @@ orderForm?.addEventListener('submit', async event => {
     return;
   }
   const pdf = document.querySelector('#order-invoice').files[0];
-  if (pdf && (pdf.type !== 'application/pdf' || pdf.size > 10 * 1024 * 1024)) {
-    orderStatus.textContent = 'Choose a PDF smaller than 10 MB.';
+  if (pdf && (pdf.type !== 'application/pdf' || pdf.size > 6 * 1024 * 1024)) {
+    orderStatus.textContent = 'Choose a PDF smaller than 6 MB.';
     return;
   }
   const button = orderForm.querySelector('button[type="submit"]');

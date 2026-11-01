@@ -19,7 +19,7 @@ The GitHub Pages site contains the customer and admin interfaces. Private custom
    - `ADMIN_PASSWORD` — admin password.
    - `ADMIN_SESSION_SECRET` — at least 32 random characters.
    - `ACCESS_PEPPER` — at least 32 other random characters.
-   - `RUPEES_PER_POINT` — the number of whole rupees needed to earn one point; the current draft default is `100` until URAVAI confirms the rewards rule.
+   - `RUPEES_PER_POINT=10` — one point is earned for every full ₹10 spent.
 
 5. Set both public URL values in `assets/loyalty-config.js` to `https://<project-ref>.supabase.co/functions/v1/loyalty`. This URL is safe to publish; it is not a secret.
 6. Add a real order with a final bill PDF in the admin page. A new customer's private access code is shown once. Share it with the customer through the order conversation; they then use their phone and code to see points and download bills.
@@ -35,4 +35,4 @@ The admin page's unlisted address is a convenience, not a security control. The 
 
 ## Before launch
 
-Confirm the earning rule and customer verification method, connect the project, deploy the migration and function, then test one admin order and one customer lookup on the live site. Keep test customer records separate from real orders and delete them through the project console after verification.
+Connect the project, deploy the migration and function, then test one admin order and one customer lookup on the live site. Keep test customer records separate from real orders and delete them through the project console after verification.

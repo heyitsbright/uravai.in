@@ -131,7 +131,7 @@ async function handleLogin(req: Request, body: Record<string, unknown>, origin: 
   if (username !== expectedUser || !equalHex(actualHash, expectedHash)) {
     return reply({ error: 'Invalid credentials' }, 401, origin);
   }
-  const rupeesPerPoint = Number(Deno.env.get('RUPEES_PER_POINT') || '100');
+  const rupeesPerPoint = Number(Deno.env.get('RUPEES_PER_POINT') || '10');
   if (!Number.isSafeInteger(rupeesPerPoint) || rupeesPerPoint < 1) {
     return reply({ error: 'Rewards rule is not configured' }, 503, origin);
   }
@@ -197,10 +197,12 @@ async function handleCreate(form: FormData, origin: string) {
   const orderNumber = String(form.get('orderNumber') || '').trim();
   const date = String(form.get('date') || '');
   const product = String(form.get('product') || '').trim();
-  const amount = Number(form.get('amount'));
+  const amountText = String(form.get('amount') || '');
+  const amount = Number(amountText);
   const invoice = form.get('invoice');
   if (!phone || !name || name.length > 80 || !orderNumber || orderNumber.length > 40 ||
       !/^\d{4}-\d{2}-\d{2}$/.test(date) || !product || product.length > 80 ||
+      !/^\d{1,8}(\.\d{1,2})?$/.test(amountText) ||
       !Number.isFinite(amount) || amount < 0 || amount > 10000000) {
     return reply({ error: 'Check the order details' }, 400, origin);
   }
@@ -211,7 +213,7 @@ async function handleCreate(form: FormData, origin: string) {
       return reply({ error: 'Bill must be a PDF under 6 MB' }, 400, origin);
     }
   }
-  const rupeesPerPoint = Number(Deno.env.get('RUPEES_PER_POINT') || '100');
+  const rupeesPerPoint = Number(Deno.env.get('RUPEES_PER_POINT') || '10');
   if (!Number.isSafeInteger(rupeesPerPoint) || rupeesPerPoint < 1) {
     return reply({ error: 'Rewards rule is not configured' }, 503, origin);
   }
