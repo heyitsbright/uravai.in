@@ -20,10 +20,16 @@ function allowedOrigin(origin: string) {
     (origin === Deno.env.get('LOCAL_PREVIEW_ORIGIN') && Boolean(origin));
 }
 
-function database() {
-  const url = Deno.env.get('SUPABASE_URL');
+function serverKey() {
   const keySet = Deno.env.get('SUPABASE_SECRET_KEYS');
   const key = keySet ? JSON.parse(keySet).default : Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!key || key.length < 32) throw new Error('Server key is not configured');
+  return key;
+}
+
+function database() {
+  const url = Deno.env.get('SUPABASE_URL');
+  const key = serverKey();
   if (!url || !key) throw new Error('Database service is not configured');
   return createClient(url, key, { auth: { persistSession: false } });
 }
@@ -59,19 +65,19 @@ function decodeBase64url(value: string) {
 }
 
 async function sessionToken() {
-  const secret = Deno.env.get('ADMIN_SESSION_SECRET');
-  if (!secret || secret.length < 32) throw new Error('Admin session secret is not configured');
+  const secret = Deno.env.get('ADMIN_SESSION_SECRET') || serverKey();
+  if (secret.length < 32) throw new Error('Admin session secret is not configured');
   const payload = base64url(encoder.encode(JSON.stringify({ role: 'admin', exp: Date.now() + 60 * 60 * 1000 })));
-  return `${payload}.${base64url(await hmac(secret, payload))}`;
+  return `${payload}.${base64url(await hmac(`admin-session:${secret}`, payload))}`;
 }
 
 async function validSession(req: Request) {
-  const secret = Deno.env.get('ADMIN_SESSION_SECRET');
+  const secret = Deno.env.get('ADMIN_SESSION_SECRET') || serverKey();
   const token = req.headers.get('authorization')?.replace(/^Bearer /i, '') || '';
   const [payload, signature, extra] = token.split('.');
-  if (!secret || !payload || !signature || extra) return false;
+  if (!payload || !signature || extra) return false;
   try {
-    const actual = base64url(await hmac(secret, payload));
+    const actual = base64url(await hmac(`admin-session:${secret}`, payload));
     if (!equalHex(signature, actual)) return false;
     const parsed = JSON.parse(new TextDecoder().decode(decodeBase64url(payload)));
     return parsed.role === 'admin' && Number.isFinite(parsed.exp) && parsed.exp > Date.now();
@@ -101,9 +107,9 @@ function normalizedCode(value: unknown) {
 }
 
 async function codeHash(phone: string, code: string) {
-  const pepper = Deno.env.get('ACCESS_PEPPER');
-  if (!pepper || pepper.length < 32) throw new Error('Customer access secret is not configured');
-  return hex(await hmac(pepper, `${phone}:${normalizedCode(code)}`));
+  const pepper = Deno.env.get('ACCESS_PEPPER') || serverKey();
+  if (pepper.length < 32) throw new Error('Customer access secret is not configured');
+  return hex(await hmac(`customer-access:${pepper}`, `${phone}:${normalizedCode(code)}`));
 }
 
 function newCode() {

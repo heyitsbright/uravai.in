@@ -17,9 +17,9 @@ The GitHub Pages site contains the customer and admin interfaces. Private custom
 
    - `ADMIN_USER` — admin username.
    - `ADMIN_PASSWORD` — admin password.
-   - `ADMIN_SESSION_SECRET` — at least 32 random characters.
-   - `ACCESS_PEPPER` — at least 32 other random characters.
    - `RUPEES_PER_POINT=10` — one point is earned for every full ₹10 spent.
+
+   The function derives separate signing keys from Supabase's default server-only secret key. Optional `ADMIN_SESSION_SECRET` and `ACCESS_PEPPER` overrides can be set if independently managed keys are needed. If the default server key is rotated without overrides, existing customer access codes must be reissued.
 
 5. Set both public URL values in `assets/loyalty-config.js` to `https://<project-ref>.supabase.co/functions/v1/loyalty`. This URL is safe to publish; it is not a secret.
 6. Add a real order with a final bill PDF in the admin page. A new customer's private access code is shown once. Share it with the customer through the order conversation; they then use their phone and code to see points and download bills.
