@@ -120,7 +120,9 @@ function remoteKey(req: Request, scope: string) {
 async function handleLogin(req: Request, body: Record<string, unknown>, origin: string) {
   const db = database();
   const attempt = await remoteKey(req, 'admin');
-  if (!await rateAllowed(db, attempt, 8, 15 * 60)) return reply({ error: 'Try again later' }, 429, origin);
+  const allowedFromAddress = await rateAllowed(db, attempt, 8, 15 * 60);
+  const allowedOverall = await rateAllowed(db, await sha256('admin:all-addresses'), 30, 15 * 60);
+  if (!allowedFromAddress || !allowedOverall) return reply({ error: 'Try again later' }, 429, origin);
   const username = String(body.username || '').trim();
   const password = String(body.password || '');
   const expectedUser = Deno.env.get('ADMIN_USER') || 'uravaiadmin';
