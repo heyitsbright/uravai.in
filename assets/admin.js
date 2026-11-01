@@ -22,6 +22,7 @@ async function adminRequest(action, data, isMultipart = false) {
     method: 'POST',
     headers: {
       ...(isMultipart ? {} : {'Content-Type': 'application/json'}),
+      'apikey': window.URAVAI_PUBLISHABLE_KEY,
       ...(adminSession ? {'Authorization': `Bearer ${adminSession}`} : {})
     },
     body,

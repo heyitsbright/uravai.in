@@ -106,7 +106,10 @@ accountForm?.addEventListener('submit', async event => {
   try {
     const response = await fetch(accountApi, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': window.URAVAI_PUBLISHABLE_KEY
+      },
       body: JSON.stringify({action: 'lookup', phone: `+91${phone}`, code: accountCode.value.trim()}),
       cache: 'no-store'
     });
