@@ -83,6 +83,10 @@ if (!accountApi) {
 accountForm?.addEventListener('submit', async event => {
   event.preventDefault();
   showAccountStatus('');
+  accountResults.hidden = true;
+  document.querySelector('#latest-bill').replaceChildren();
+  document.querySelector('#bill-history').replaceChildren();
+  document.querySelector('#points-balance').textContent = '0';
   if (!accountForm.reportValidity()) return;
   const phone = accountPhone.value.replace(/\D/g, '');
   if (!/^[6-9]\d{9}$/.test(phone)) {
