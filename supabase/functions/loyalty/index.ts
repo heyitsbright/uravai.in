@@ -73,7 +73,7 @@ async function sessionToken() {
 
 async function validSession(req: Request) {
   const secret = Deno.env.get('ADMIN_SESSION_SECRET') || serverKey();
-  const token = req.headers.get('authorization')?.replace(/^Bearer /i, '') || '';
+  const token = req.headers.get('x-uravai-session') || '';
   const [payload, signature, extra] = token.split('.');
   if (!payload || !signature || extra) return false;
   try {
@@ -299,7 +299,7 @@ Deno.serve(async req => {
       headers: {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
+        'Access-Control-Allow-Headers': 'Content-Type, apikey, x-uravai-session',
         'Access-Control-Max-Age': '3600',
         'Vary': 'Origin'
       }

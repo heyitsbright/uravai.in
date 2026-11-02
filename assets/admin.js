@@ -23,7 +23,7 @@ async function adminRequest(action, data, isMultipart = false) {
     headers: {
       ...(isMultipart ? {} : {'Content-Type': 'application/json'}),
       'apikey': window.URAVAI_PUBLISHABLE_KEY,
-      ...(adminSession ? {'Authorization': `Bearer ${adminSession}`} : {})
+      ...(adminSession ? {'x-uravai-session': adminSession} : {})
     },
     body,
     cache: 'no-store'
