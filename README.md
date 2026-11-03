@@ -23,3 +23,11 @@ Run locally with `python -m http.server 4173` from this folder.
 This repository publishes from the `main` branch root to [GitHub Pages](https://heyitsbright.github.io/uravai.in/). The three pages have canonical URLs, social sharing metadata, and JSON-LD; `sitemap.xml` lists the public pages. If a custom domain is connected later, update those absolute URLs and the sitemap to that domain. The site is not connected to Search Console yet.
 
 The live pages use compressed JPEG images for faster loading; the original PNG assets remain in `assets/`.
+
+## Private points and bills
+
+The customer page (`account.html`) uses a mobile number plus a private access code. The unlinked order desk (`uravaiadmin.html`) lets an authorized admin record purchases and attach PDF bills. The public site contains only the Supabase publishable key. The Edge Function keeps its server key and admin password in Supabase secrets. Customer tables use row level security and are inaccessible to the public key; bills live in a private bucket and receive five-minute download links only after account verification. Points are calculated server-side as one point for each full ₹10 spent.
+
+Deploy `supabase/migrations/*.sql` in date order, then deploy `supabase/functions/loyalty/index.ts` with JWT verification enabled. Set `ADMIN_PASSWORD` in Supabase Edge Function secrets to a strong, unique value and keep it out of this repository and chat. The login page does not use the Supabase database password. If that secret is changed, use the new value on the admin page. Do not turn off JWT verification to resolve a login error.
+
+The pages use a Content Security Policy, no-referrer policy, input validation, request-size limits and rate limits. The admin session stays in memory and is cleared when the page is left. Uploaded bills must be PDFs of at most 6 MB. The enquiry form opens a prepared WhatsApp message; incoming WhatsApp conversations are handled by WhatsApp and are not stored by this website.

@@ -3,12 +3,16 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const encoder = new TextEncoder();
 const productionOrigin = 'https://heyitsbright.github.io';
 const bucket = 'uravai-bills';
+const maxRequestBytes = 7 * 1024 * 1024;
+const allowedProducts = new Set(['URAVAI Stories', 'URAVAI Prints', 'Memory Album', 'Other keepsake']);
 
 function reply(data: unknown, status = 200, origin = '') {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store, private',
     'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'X-Frame-Options': 'DENY',
     'Vary': 'Origin'
   };
   if (origin) headers['Access-Control-Allow-Origin'] = origin;
@@ -117,6 +121,34 @@ function newCode() {
   return code.match(/.{1,6}/g)!.join('-');
 }
 
+async function readLimitedBody(req: Request) {
+  if (!req.body) return new Uint8Array(0);
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxRequestBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 function remoteKey(req: Request, scope: string) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     req.headers.get('cf-connecting-ip') || 'unknown';
@@ -169,7 +201,7 @@ async function handleLookup(req: Request, body: Record<string, unknown>, origin:
     let invoiceUrl: string | null = null;
     if (row.invoice_path) {
       const { data } = await db.storage.from(bucket).createSignedUrl(row.invoice_path, 300, {
-        download: `URAVAI-${row.order_number}.pdf`
+        download: `URAVAI-${row.order_number.replace(/[^A-Za-z0-9._-]/g, '-')}.pdf`
       });
       invoiceUrl = data?.signedUrl || null;
     }
@@ -208,8 +240,11 @@ async function handleCreate(form: FormData, origin: string) {
   const amountText = String(form.get('amount') || '');
   const amount = Number(amountText);
   const invoice = form.get('invoice');
-  if (!phone || !name || name.length > 80 || !orderNumber || orderNumber.length > 40 ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(date) || !product || product.length > 80 ||
+  const dateValue = new Date(`${date}T00:00:00.000Z`);
+  if (!phone || !name || name.length > 80 || /[\u0000-\u001f\u007f]/.test(name) ||
+      !orderNumber || orderNumber.length > 40 || /[\u0000-\u001f\u007f]/.test(orderNumber) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(dateValue.getTime()) ||
+      dateValue.toISOString().slice(0, 10) !== date || !allowedProducts.has(product) ||
       !/^\d{1,8}(\.\d{1,2})?$/.test(amountText) ||
       !Number.isFinite(amount) || amount < 0 || amount > 10000000) {
     return reply({ error: 'Check the order details' }, 400, origin);
@@ -272,7 +307,10 @@ async function handleCreate(form: FormData, origin: string) {
   } catch (error) {
     if (invoicePath) await db.storage.from(bucket).remove([invoicePath]);
     if (createdCustomer && customerId) await db.from('loyalty_customers').delete().eq('id', customerId);
-    console.error('Order save failed', error);
+    if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
+      return reply({ error: 'This order number already exists' }, 409, origin);
+    }
+    console.error('Order save failed', error instanceof Error ? error.message : 'unknown');
     return reply({ error: 'Could not save order' }, 500, origin);
   }
 }
@@ -307,22 +345,44 @@ Deno.serve(async req => {
   }
   if (!allowed) return reply({ error: 'Origin not allowed' }, 403);
   if (req.method !== 'POST') return reply({ error: 'Method not allowed' }, 405, origin);
-  if (Number(req.headers.get('content-length')) > 7 * 1024 * 1024) {
+  if (Number(req.headers.get('content-length')) > maxRequestBytes) {
     return reply({ error: 'Request too large' }, 413, origin);
   }
   try {
-    const multipart = req.headers.get('content-type')?.startsWith('multipart/form-data');
-    const body = multipart ? await req.formData() : await req.json();
-    const action = multipart ? String(body.get('action') || '') : String(body.action || '');
-    if (action === 'adminLogin' && !multipart) return await handleLogin(req, body, origin);
-    if (action === 'lookup' && !multipart) return await handleLookup(req, body, origin);
+    const contentType = req.headers.get('content-type') || '';
+    const multipart = contentType.toLowerCase().startsWith('multipart/form-data;');
+    if (!multipart && !/^application\/json(?:;|$)/i.test(contentType)) {
+      return reply({ error: 'Content type must be JSON or multipart form data' }, 415, origin);
+    }
+    const bytes = await readLimitedBody(req);
+    if (!bytes) return reply({ error: 'Request too large' }, 413, origin);
+    let form: FormData | null = null;
+    let json: Record<string, unknown> | null = null;
+    try {
+      if (multipart) {
+        form = await new Request(req.url, {
+          method: 'POST', headers: { 'Content-Type': contentType }, body: bytes
+        }).formData();
+      } else {
+        const parsed = JSON.parse(new TextDecoder().decode(bytes));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return reply({ error: 'Invalid request body' }, 400, origin);
+        }
+        json = parsed;
+      }
+    } catch {
+      return reply({ error: 'Invalid request body' }, 400, origin);
+    }
+    const action = form ? String(form.get('action') || '') : String(json?.action || '');
+    if (action === 'adminLogin' && json) return await handleLogin(req, json, origin);
+    if (action === 'lookup' && json) return await handleLookup(req, json, origin);
     if (!await validSession(req)) return reply({ error: 'Sign-in required' }, 401, origin);
-    if (action === 'listOrders' && !multipart) return await handleRecent(origin);
-    if (action === 'createOrder' && multipart) return await handleCreate(body, origin);
-    if (action === 'resetCode' && !multipart) return await handleReset(body, origin);
+    if (action === 'listOrders' && json) return await handleRecent(origin);
+    if (action === 'createOrder' && form) return await handleCreate(form, origin);
+    if (action === 'resetCode' && json) return await handleReset(json, origin);
     return reply({ error: 'Unknown request' }, 400, origin);
   } catch (error) {
-    console.error('Loyalty request failed', error);
+    console.error('Loyalty request failed', error instanceof Error ? error.message : 'unknown');
     return reply({ error: 'Service unavailable' }, 500, origin);
   }
 });

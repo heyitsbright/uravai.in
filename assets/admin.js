@@ -1,3 +1,8 @@
+if (window.top !== window.self) {
+  document.body.replaceChildren();
+  throw new Error('Order desk must be opened directly');
+}
+
 const adminApi = window.URAVAI_ADMIN_API_URL || '';
 const loginForm = document.querySelector('#admin-login-form');
 const orderForm = document.querySelector('#admin-order-form');
@@ -10,10 +15,30 @@ let rupeesPerPoint = 10;
 function updatePointsPreview() {
   const amount = Number(document.querySelector('#order-amount').value);
   document.querySelector('#order-points').value = String(
-    Number.isFinite(amount) && amount > 0 ? Math.floor(amount / rupeesPerPoint) : 0
+    Number.isFinite(amount) && amount > 0
+      ? Math.floor(Math.round(amount * 100) / (rupeesPerPoint * 100)) : 0
   );
 }
 document.querySelector('#order-amount')?.addEventListener('input', updatePointsPreview);
+
+function setToday() {
+  const now = new Date();
+  document.querySelector('#order-date').value =
+    new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function signOut(message = '') {
+  adminSession = '';
+  document.querySelector('#admin-dashboard').hidden = true;
+  document.querySelector('#admin-login').hidden = false;
+  document.querySelector('#admin-access-code').hidden = true;
+  document.querySelector('#new-access-code').textContent = '';
+  recentList.replaceChildren();
+  loginForm.reset();
+  orderForm.reset();
+  document.querySelector('#admin-reset-form').reset();
+  loginStatus.textContent = message;
+}
 
 async function adminRequest(action, data, isMultipart = false) {
   const body = isMultipart ? data : JSON.stringify({action, ...data});
@@ -26,10 +51,20 @@ async function adminRequest(action, data, isMultipart = false) {
       ...(adminSession ? {'x-uravai-session': adminSession} : {})
     },
     body,
-    cache: 'no-store'
+    cache: 'no-store',
+    credentials: 'omit',
+    redirect: 'error',
+    referrerPolicy: 'no-referrer'
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'Request failed');
+  if (!response.ok) {
+    if (response.status === 401 && action !== 'adminLogin') {
+      signOut('Your session expired. Please sign in again.');
+    }
+    const error = new Error(result.error || 'Request failed');
+    error.status = response.status;
+    throw error;
+  }
   return result;
 }
 
@@ -85,11 +120,18 @@ loginForm?.addEventListener('submit', async event => {
     document.querySelector('#admin-password').value = '';
     document.querySelector('#admin-login').hidden = true;
     document.querySelector('#admin-dashboard').hidden = false;
-    document.querySelector('#order-date').valueAsDate = new Date();
+    setToday();
     loginStatus.textContent = '';
-    await refreshOrders();
-  } catch {
-    loginStatus.textContent = 'Unable to sign in. Check your details or try again later.';
+    await refreshOrders().catch(() => {
+      recentList.textContent = 'Signed in. Recent purchases could not load; please use Refresh.';
+    });
+  } catch (error) {
+    document.querySelector('#admin-password').value = '';
+    loginStatus.textContent = error.status === 429
+      ? 'Too many sign-in attempts. Please try again in 15 minutes.'
+      : error.status === 401
+        ? 'Username or password is incorrect.'
+        : 'The order desk is temporarily unavailable. Please try again.';
   } finally {
     button.disabled = false;
   }
@@ -112,23 +154,31 @@ orderForm?.addEventListener('submit', async event => {
   const button = orderForm.querySelector('button[type="submit"]');
   button.disabled = true;
   orderStatus.textContent = 'Saving this order…';
+  let saved = false;
   try {
     const data = new FormData(orderForm);
     data.set('phone', `+91${phone}`);
     const result = await adminRequest('createOrder', data, true);
+    saved = true;
     orderStatus.textContent = 'Order saved. Points and bill are now linked to this customer.';
     const codePanel = document.querySelector('#admin-access-code');
     codePanel.hidden = !result.accessCode;
     document.querySelector('#new-access-code').textContent = result.accessCode || '';
     orderForm.reset();
-    document.querySelector('#order-date').valueAsDate = new Date();
+    setToday();
     updatePointsPreview();
-    await refreshOrders();
-  } catch {
-    orderStatus.textContent = 'The order could not be saved. Check the details and try again.';
+  } catch (error) {
+    orderStatus.textContent = error.status === 409
+      ? 'That order number already exists. Check recent purchases before creating another.'
+      : error.status === 400
+        ? 'Check the order details and PDF, then try again.'
+        : 'The save could not be confirmed. Check recent purchases before trying again.';
   } finally {
     button.disabled = false;
   }
+  if (saved) await refreshOrders().catch(() => {
+    recentList.textContent = 'Order saved. Recent purchases could not load; please use Refresh.';
+  });
 });
 
 document.querySelector('#admin-reset-form')?.addEventListener('submit', async event => {
@@ -157,18 +207,19 @@ document.querySelector('#admin-reset-form')?.addEventListener('submit', async ev
   }
 });
 
-document.querySelector('#admin-signout')?.addEventListener('click', () => {
-  adminSession = '';
-  document.querySelector('#admin-dashboard').hidden = true;
-  document.querySelector('#admin-login').hidden = false;
-  document.querySelector('#admin-access-code').hidden = true;
-  document.querySelector('#new-access-code').textContent = '';
-  loginForm.reset();
-});
+document.querySelector('#admin-signout')?.addEventListener('click', () => signOut());
 document.querySelector('#admin-refresh')?.addEventListener('click', () => refreshOrders().catch(() => {
   recentList.textContent = 'Could not load recent purchases. Please try again.';
 }));
 document.querySelector('#copy-access-code')?.addEventListener('click', async () => {
   const code = document.querySelector('#new-access-code').textContent;
-  if (code) await navigator.clipboard.writeText(code);
+  if (!code) return;
+  try {
+    await navigator.clipboard.writeText(code);
+    orderStatus.textContent = 'Access code copied.';
+  } catch {
+    orderStatus.textContent = 'Could not copy the code. Select and copy it manually.';
+  }
 });
+
+window.addEventListener('pagehide', () => signOut());

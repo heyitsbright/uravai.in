@@ -1,3 +1,8 @@
+if (window.top !== window.self) {
+  document.body.replaceChildren();
+  throw new Error('Account page must be opened directly');
+}
+
 const accountApi = window.URAVAI_ACCOUNT_API_URL || '';
 const accountForm = document.querySelector('#account-form');
 const accountPhone = document.querySelector('#account-phone');
@@ -14,7 +19,9 @@ function showAccountStatus(message) {
 function validInvoiceUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' ? url.href : null;
+    const service = new URL(accountApi);
+    return url.protocol === 'https:' && url.origin === service.origin &&
+      url.pathname.startsWith('/storage/v1/object/sign/uravai-bills/') ? url.href : null;
   } catch {
     return null;
   }
@@ -71,6 +78,13 @@ function displayAccount(data) {
   accountResults.scrollIntoView({behavior: 'smooth', block: 'start'});
 }
 
+function clearAccountResults() {
+  accountResults.hidden = true;
+  document.querySelector('#latest-bill').replaceChildren();
+  document.querySelector('#bill-history').replaceChildren();
+  document.querySelector('#points-balance').textContent = '0';
+}
+
 if (!accountApi) {
   accountCodeField.hidden = true;
   accountCode.required = false;
@@ -83,10 +97,7 @@ if (!accountApi) {
 accountForm?.addEventListener('submit', async event => {
   event.preventDefault();
   showAccountStatus('');
-  accountResults.hidden = true;
-  document.querySelector('#latest-bill').replaceChildren();
-  document.querySelector('#bill-history').replaceChildren();
-  document.querySelector('#points-balance').textContent = '0';
+  clearAccountResults();
   if (!accountForm.reportValidity()) return;
   const phone = accountPhone.value.replace(/\D/g, '');
   if (!/^[6-9]\d{9}$/.test(phone)) {
@@ -111,25 +122,39 @@ accountForm?.addEventListener('submit', async event => {
         'apikey': window.URAVAI_PUBLISHABLE_KEY
       },
       body: JSON.stringify({action: 'lookup', phone: `+91${phone}`, code: accountCode.value.trim()}),
-      cache: 'no-store'
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer'
     });
-    if (!response.ok) throw new Error('Account unavailable');
+    if (!response.ok) {
+      const error = new Error('Account unavailable');
+      error.status = response.status;
+      throw error;
+    }
     const data = await response.json();
     displayAccount(data);
+    accountCode.value = '';
     showAccountStatus('');
-  } catch {
-    showAccountStatus('We could not verify this account. Check your number and code, or chat with us for help.');
+  } catch (error) {
+    showAccountStatus(error.status === 429
+      ? 'Too many attempts. Please try again in 15 minutes or chat with us for help.'
+      : error.status === 401
+        ? 'We could not verify this account. Check your number and code, or chat with us for help.'
+        : 'The account service is temporarily unavailable. Please try again or chat with us for help.');
   } finally {
     accountSubmit.disabled = false;
   }
 });
 
 document.querySelector('#account-signout')?.addEventListener('click', () => {
-  accountResults.hidden = true;
-  document.querySelector('#latest-bill').replaceChildren();
-  document.querySelector('#bill-history').replaceChildren();
-  document.querySelector('#points-balance').textContent = '0';
+  clearAccountResults();
   accountForm.reset();
   accountPhone.focus();
   window.scrollTo({top: 0, behavior: 'smooth'});
+});
+
+window.addEventListener('pagehide', () => {
+  clearAccountResults();
+  accountForm.reset();
 });
