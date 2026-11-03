@@ -36,8 +36,10 @@ mobileNav?.querySelectorAll('a').forEach(link => link.addEventListener('click', 
 const collectionSelect = document.querySelector('#collection');
 const productSelect = document.querySelector('#product');
 function updateProducts() {
+  if (!collectionSelect || !productSelect) return;
   const values = products[collectionSelect.value];
   productSelect.replaceChildren();
+  productSelect.setCustomValidity('');
   const placeholder = document.createElement('option');
   placeholder.value = '';
   placeholder.textContent = values ? 'Choose a keepsake' : 'Select a collection first';
@@ -53,7 +55,9 @@ function updateProducts() {
   productSelect.disabled = !values;
 }
 collectionSelect?.addEventListener('change', updateProducts);
+productSelect?.addEventListener('change', () => productSelect.setCustomValidity(''));
 document.querySelectorAll('[data-select-collection]').forEach(link => link.addEventListener('click', () => {
+  if (!collectionSelect || !productSelect) return;
   collectionSelect.value = link.dataset.selectCollection;
   updateProducts();
 }));
@@ -62,14 +66,23 @@ document.querySelector('#enquiry-form')?.addEventListener('submit', event => {
   event.preventDefault();
   if (!event.currentTarget.reportValidity()) return;
   const form = new FormData(event.currentTarget);
+  const collection = String(form.get('collection') || '');
+  const product = String(form.get('product') || '');
+  if (!products[collection]?.includes(product)) {
+    productSelect.setCustomValidity('Choose a keepsake from the selected collection.');
+    productSelect.reportValidity();
+    return;
+  }
+  const cleanText = (value, limit) => String(value || '').trim()
+    .replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').slice(0, limit);
   const lines = [
     'Hello URAVAI! 🤍 I would love to create a keepsake.',
     '',
-    `Collection: URAVAI ${form.get('collection')}`,
-    `Keepsake: ${form.get('product')}`
+    `Collection: URAVAI ${collection}`,
+    `Keepsake: ${product}`
   ];
-  const occasion = String(form.get('occasion') || '').trim();
-  const note = String(form.get('message') || '').trim();
+  const occasion = cleanText(form.get('occasion'), 80);
+  const note = cleanText(form.get('message'), 400);
   if (occasion) lines.push(`Occasion: ${occasion}`);
   if (note) lines.push(`My idea: ${note}`);
   lines.push('', 'Could you share the available options, pricing, and next steps?');
