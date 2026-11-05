@@ -1,7 +1,7 @@
 const phone = '919444464674';
 const products = {
   Stories: ['The Marriage Magazine', 'The Love Journal', 'Anniversary Edition', 'Personalized Memory Magazine', 'I am not sure yet'],
-  Prints: ['Mini Polaroid Prints', 'Classic Polaroid Prints', 'Large Photo Prints', 'Personalized Memory Album', 'I am not sure yet']
+  Prints: ['Mini Polaroid Print — 2 × 3 in (₹20 each)', 'Small Polaroid Print — 2.5 × 3.5 in (₹25 each)', 'Standard Polaroid Print — 3 × 4 in (₹30 each)', 'Large Polaroid Print — 4 × 5 in (₹35 each)', 'Personalized Memory Album', 'I am not sure yet']
 };
 const messages = {
   general: 'Hello URAVAI! 🤍 I would love to know more about your personalized keepsakes.',
@@ -14,6 +14,22 @@ const whatsappUrl = message => `https://wa.me/${phone}?text=${encodeURIComponent
 
 document.querySelectorAll('[data-whatsapp]').forEach(link => {
   const message = messages[link.dataset.whatsapp] || messages.general;
+  link.href = whatsappUrl(message);
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+});
+
+const printSizes = {
+  1: {name: 'Mini', inches: '2 × 3 in', price: 20},
+  2: {name: 'Small', inches: '2.5 × 3.5 in', price: 25},
+  3: {name: 'Standard', inches: '3 × 4 in', price: 30},
+  4: {name: 'Large', inches: '4 × 5 in', price: 35}
+};
+document.querySelectorAll('[data-print-size]').forEach(link => {
+  const size = Number(link.dataset.printSize);
+  const print = printSizes[size];
+  if (!print) return;
+  const message = `Hello URAVAI! 🤍 I would like to order ${print.name} Polaroid-style prints (${print.inches}) at ₹${print.price} each. Please help me confirm the quantity and delivery address.`;
   link.href = whatsappUrl(message);
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
